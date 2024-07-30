@@ -3,6 +3,7 @@
 // READ: 类模板 <https://zh.cppreference.com/w/cpp/language/class_template>
 
 #include <cstring>
+#include <cmath>
 
 template<class T>
 struct Tensor4D {
@@ -10,9 +11,12 @@ struct Tensor4D {
     T *data;
 
     Tensor4D(unsigned int const shape_[4], T const *data_) {
-        unsigned int size = shape_[0] + shape_[1] + shape_[2] + shape_[3];
+        unsigned int size = 1;
         // TODO: 填入正确的 shape 并计算 size
-        std::memcpy(shape, shape_, 4 * sizeof(int));
+        for (unsigned i = 0; i < 4; i++) {
+            size *= shape_[i];
+            shape[i] = shape_[i];
+        }
         data = new T[size];
         std::memcpy(data, data_, size * sizeof(T));
     }
@@ -32,38 +36,33 @@ struct Tensor4D {
     Tensor4D &operator+=(Tensor4D const &others) {
         // TODO: 实现单向广播的加法
 
-        // ref: chatgpt
-        // 首先检查形状是否兼容
-        for (int i = 0; i < 4; ++i) {
+        // ref: https://github.com/chenyinheng30/learning-cxx/exercises/20_class_template/main.cpp
+        constexpr unsigned DIM = 4;
+        unsigned size = 1;
+        for (unsigned i = 0; i < DIM; i++) {
+            size *= shape[i];
             if (shape[i] != others.shape[i] && others.shape[i] != 1) {
-                throw std::invalid_argument("Shapes are not compatible for broadcasting");
+                ASSERT(false, "Unable to broadcast.")
             }
         }
 
-        // 计算广播后的形状
-        unsigned int broadcast_shape[4];
-        for (int i = 0; i < 4; ++i) {
-            broadcast_shape[i] = std::max(shape[i], others.shape[i]);
-        }
-
-        // 计算广播后的总大小
-        unsigned int broadcast_size = broadcast_shape[0] * broadcast_shape[1] * broadcast_shape[2] * broadcast_shape[3];
-
-        // 进行加法运算
-        for (unsigned int i = 0; i < broadcast_size; ++i) {
-            // 计算 `this` 和 `others` 中的索引
-            unsigned int this_idx = i;
-            unsigned int others_idx = i;
-            unsigned int factor = 1;
-            for (int j = 3; j >= 0; --j) {
-                unsigned int stride_this = (shape[j] == 1) ? 0 : factor;
-                unsigned int stride_others = (others.shape[j] == 1) ? 0 : factor;
-                this_idx = (this_idx / factor) % broadcast_shape[j] * stride_this + (this_idx % factor);
-                others_idx = (others_idx / factor) % broadcast_shape[j] * stride_others + (others_idx % factor);
-                factor *= broadcast_shape[j];
+        unsigned indices[DIM]{0};
+        for (unsigned i = 0; i < size; i++) {
+            unsigned others_i = 0;
+            for (unsigned j = 0; j < DIM; j++) {
+                others_i *= others.shape[j];
+                if (shape[j] == others.shape[j]) {
+                    others_i += indices[j];
+                }
             }
-            data[this_idx] += others.data[others_idx];
+            data[i] += others.data[others_i];
+            indices[DIM - 1] += 1;
+            for (unsigned j = DIM - 1; indices[j] == shape[j] && j >= 1; j--) {
+                indices[j] = 0;
+                indices[j - 1] += 1;
+            }
         }
+
         return *this;
     }
 };
@@ -86,7 +85,7 @@ int main(int argc, char **argv) {
         auto t1 = Tensor4D(shape, data);
         t0 += t1;
         for (auto i = 0u; i < sizeof(data) / sizeof(*data); ++i) {
-            // ASSERT(t0.data[i] == data[i] * 2, "Tensor doubled by plus its self.");
+            ASSERT(fabs(t0.data[i] - data[i] * 2) < 0.00001, "Tensor doubled by plus its self.");
         }
     }
     {
@@ -117,7 +116,7 @@ int main(int argc, char **argv) {
         auto t1 = Tensor4D(s1, d1);
         t0 += t1;
         for (auto i = 0u; i < sizeof(d0) / sizeof(*d0); ++i) {
-            ASSERT(t0.data[i] == 7.f, "Every element of t0 should be 7 after adding t1 to it.");
+            ASSERT(fabs(t0.data[i] - 7.f)  < 0.000001, "Every element of t0 should be 7 after adding t1 to it.");
         }
     }
     {
